@@ -12,6 +12,7 @@ using Microsoft.Phone.Maps.Controls;
 using Microsoft.Phone.Maps.Services;
 using Microsoft.Phone.Maps.Toolkit;
 using Microsoft.Phone.Shell;
+using Microsoft.Phone.Tasks;
 using Nokia.Phone.HereLaunchers;
 
 namespace Trains.WP8
@@ -57,7 +58,9 @@ namespace Trains.WP8
             departuresAndArrivalsTable = DeparturesAndArrivalsTable.Create(from, to);
             title.Text = departuresAndArrivalsTable.ToString();
             if (title.Text.Length > 40)
+            {
                 title.Text = title.Text.Replace(" calling at ", "\ncalling at ");
+            }
 
             if (e.NavigationMode == NavigationMode.New)
             {
@@ -79,23 +82,31 @@ namespace Trains.WP8
                 filterByAnotherDestinationItem.Click += OnFilterByAnotherDestinationClick;
                 ApplicationBar.MenuItems.Insert(0, filterByAnotherDestinationItem);
 
-                var reverseJourneyItem = new ApplicationBarMenuItem("Reverse journey");
+                var reverseJourneyItem = new ApplicationBarIconButton(new Uri("/Assets/Icons/dark/appbar.arrow.left.right.png", UriKind.Relative)) { Text = "Reverse" };
                 reverseJourneyItem.Click += OnReverseJourneyClick;
-                ApplicationBar.MenuItems.Insert(1, reverseJourneyItem);
+                ApplicationBar.Buttons.Insert(2, reverseJourneyItem);
             }
 
             if (!NavigationService.CanGoBack)
             {
-                var anotherRailStationItem = new ApplicationBarMenuItem("Another rail station");
-                anotherRailStationItem.Click += OnAnotherRailStationClick;
-                ApplicationBar.MenuItems.Insert(0, anotherRailStationItem);
+                var homeButton = new ApplicationBarIconButton
+                {
+                    IconUri = new Uri("/Assets/Icons/dark/appbar.list.png", UriKind.Relative),
+                    Text = "All Stations",
+                };
+                homeButton.Click += OnHomeClick;
+                ApplicationBar.Buttons.Remove(GetPinToStartButton());
+                ApplicationBar.Buttons.Add(homeButton);
             }
-
-            GetPinToStartButton().IsEnabled = !IsStationPinnedToStart();
+            else
+            {
+                GetPinToStartButton().IsEnabled = !IsStationPinnedToStart();
+            }
 
             CreateDirectionsPivotItem();
 
-            if (!Stations.Country.SupportsArrivals) { 
+            if (!Stations.Country.SupportsArrivals)
+            {
                 // when supportsArrivals is false PivotSelectionChanged won't be triggered
                 Load();
             }
@@ -125,12 +136,7 @@ namespace Trains.WP8
                     new LazyBlockUI<Departure>(this, departures, departuresMessageTextBlock, departuresLastUpdatedTextBlock),
                     Settings.GetBool(Setting.AutoRefresh),
                     null,
-                    success => {
-                        if (success)
-                        {
-                            UpdateTiles();
-                        }
-                    },
+                    null,
                     null);
             }
             else if (departures.ItemsSource == null)
@@ -178,51 +184,11 @@ namespace Trains.WP8
             }
         }
 
-        private void UpdateTiles()
+        private ShellTileData GetTileData()
         {
-            var primaryTile = ShellTile.ActiveTiles.First();
-            primaryTile.Update(GetTileData(forPrimaryTile: true));
-
-            var secondaryTileUri = GetUri(departuresAndArrivalsTable, removeBackEntry: false);
-            var secondaryTile = ShellTile.ActiveTiles.FirstOrDefault(tile => tile.NavigationUri == secondaryTileUri);
-            if (secondaryTile != null)
-            {
-                secondaryTile.Update(GetTileData(forPrimaryTile: false));
-            }
-        }
-
-        private ShellTileData GetTileData(bool forPrimaryTile)
-        {
-            var firstDeparture = departures.ItemsSource == null ? null : departures.ItemsSource.Cast<Departure>().FirstOrDefault();
-
-            var departuresTableHeader =
-                departuresAndArrivalsTable.ToSmallString() +
-                (departuresAndArrivalsTable.HasDestinationFilter || firstDeparture == null ? "" : " to " + firstDeparture.Destination);
-
-            string content;
-            string wideContent;
-            if (firstDeparture == null)
-            {
-                content = (forPrimaryTile ? departuresTableHeader + "\n" : "") +
-                          "No more trains today";
-                wideContent = departuresTableHeader + "\n" + "No more trains today";
-            }
-            else
-            {
-                content = (forPrimaryTile ? departuresTableHeader : (departuresAndArrivalsTable.HasDestinationFilter ? "" : firstDeparture.Destination)) +
-                          (firstDeparture.PlatformIsKnown ? "\nPlatform " + firstDeparture.Platform.Value : "") +
-                          (forPrimaryTile ? "" : "\n" + firstDeparture.Due + " " + firstDeparture.Status);
-                wideContent = departuresTableHeader + "\n" +
-                              (firstDeparture.PlatformIsKnown ? "Platform " + firstDeparture.Platform.Value + " " : "") + 
-                              firstDeparture.Due + " " + firstDeparture.Status;
-            }
-
             return new FlipTileData
             {
-                Title = forPrimaryTile ? AppMetadata.Current.Name : departuresAndArrivalsTable.ToSmallString(),
-                BackTitle = AppMetadata.Current.Name,
-                BackContent = content,
-                WideBackContent = wideContent,
+                Title = departuresAndArrivalsTable.ToSmallString(),
                 SmallBackgroundImage = new Uri("Assets/Tiles/dark/FlipCycleTileSmall.png", UriKind.Relative),
                 BackgroundImage = new Uri("Assets/Tiles/dark/FlipCycleTileMedium.png", UriKind.Relative),
                 WideBackgroundImage = new Uri("Assets/Tiles/dark/FlipCycleTileLarge.png", UriKind.Relative),
@@ -238,8 +204,8 @@ namespace Trains.WP8
                 {
                     RouteOptimization = RouteOptimization.MinimizeTime,
                     TravelMode = TravelMode.Walking,
-                    Waypoints = new[] { 
-                    currentPosition, 
+                    Waypoints = new[] {
+                    currentPosition,
                     new GeoCoordinate(departuresAndArrivalsTable.Station.Location.Lat, departuresAndArrivalsTable.Station.Location.Long) },
                 };
 
@@ -327,27 +293,27 @@ namespace Trains.WP8
 
         private bool IsStationPinnedToStart()
         {
-            var uri = GetUri(departuresAndArrivalsTable, removeBackEntry: false);
+            var uri = GetUri(departuresAndArrivalsTable);
             return ShellTile.ActiveTiles.Any(tile => tile.NavigationUri == uri);
         }
 
         private void OnPinToStartClick(object sender, EventArgs e)
         {
             ErrorReporting.Log("OnPinToStartClick");
-            var uri = GetUri(departuresAndArrivalsTable, removeBackEntry: false);
+            var uri = GetUri(departuresAndArrivalsTable);
             if (!IsStationPinnedToStart())
             {
-                ShellTile.Create(GetUri(departuresAndArrivalsTable, removeBackEntry: false), GetTileData(forPrimaryTile: false), true);
+                ShellTile.Create(GetUri(departuresAndArrivalsTable), GetTileData(), supportsWideTile: true);
             }
             GetPinToStartButton().IsEnabled = false;
         }
 
-        private Uri GetUri(DeparturesAndArrivalsTable departuresAndArrivalsTable, bool removeBackEntry)
+        private Uri GetUri(DeparturesAndArrivalsTable departuresAndArrivalsTable, bool removeBackEntry = false)
         {
             return GetUri(this, departuresAndArrivalsTable, removeBackEntry);
         }
 
-        public static Uri GetUri(PhoneApplicationPage page, DeparturesAndArrivalsTable departuresAndArrivalsTable, bool removeBackEntry)
+        public static Uri GetUri(PhoneApplicationPage page, DeparturesAndArrivalsTable departuresAndArrivalsTable, bool removeBackEntry = false)
         {
             return page.GetUri<StationPage>().WithParameters("station", departuresAndArrivalsTable.Station.Code)
                                              .WithParametersIf(departuresAndArrivalsTable.HasDestinationFilter, () => "callingAt", () => departuresAndArrivalsTable.CallingAt.Value.Code)
@@ -372,30 +338,30 @@ namespace Trains.WP8
             ErrorReporting.Log("OnFilterOrClearFilterClick");
             if (departuresAndArrivalsTable.HasDestinationFilter)
             {
-                NavigationService.Navigate(GetUri(departuresAndArrivalsTable.WithoutFilter, false));
+                NavigationService.Navigate(GetUri(departuresAndArrivalsTable.WithoutFilter));
             }
             else
             {
-                NavigationService.Navigate(this.GetUri<MainAndFilterPage>().WithParameters("fromStation", departuresAndArrivalsTable.Station.Code));
+                NavigationService.Navigate(MainAndFilterPage.GetUri(this, departuresAndArrivalsTable.Station));
             }
         }
 
         private void OnFilterByAnotherDestinationClick(object sender, EventArgs e)
         {
             ErrorReporting.Log("OnFilterByAnotherDestinationClick");
-            NavigationService.Navigate(this.GetUri<MainAndFilterPage>().WithParameters("fromStation", departuresAndArrivalsTable.Station.Code, "excludeStation", departuresAndArrivalsTable.CallingAt.Value.Code));
+            NavigationService.Navigate(MainAndFilterPage.GetUri(this, departuresAndArrivalsTable.Station, departuresAndArrivalsTable.CallingAt.Value));
         }
 
         private void OnReverseJourneyClick(object sender, EventArgs e)
         {
             ErrorReporting.Log("OnReverseJourneyClick");
-            NavigationService.Navigate(GetUri(departuresAndArrivalsTable.Reversed, false));
+            NavigationService.Navigate(GetUri(departuresAndArrivalsTable.Reversed));
         }
 
-        private void OnAnotherRailStationClick(object sender, EventArgs e)
+        private void OnHomeClick(object sender, EventArgs e)
         {
-            ErrorReporting.Log("OnRailStationsClick");
-            NavigationService.Navigate(this.GetUri<MainAndFilterPage>());
+            ErrorReporting.Log("OnHomeClick");
+            NavigationService.Navigate(MainAndFilterPage.GetUri(this));
         }
 
         private void OnLiveProgressFromDeparturesClick(object sender, EventArgs e)
@@ -420,6 +386,24 @@ namespace Trains.WP8
         {
             ErrorReporting.Log("OnPivotSelectionChanged " + pivot.SelectedIndex);
             Load();
+        }
+
+        private void OnSendTextMessage(object sender, RoutedEventArgs e)
+        {
+            ErrorReporting.Log("OnSendTextMessage");
+            var departure = (Departure)((MenuItem)sender).DataContext;
+            var body =
+                "I'm taking the "
+                + departure.Due
+                + " train from "
+                + departuresAndArrivalsTable.Station.Name
+                + " to "
+                + departuresAndArrivalsTable.Match(_ => departure.Destination, (_, destination) => destination.Name);
+            if (departure.ArrivalIsKnown)
+            {
+                body += ". I'll be there at " + departure.Arrival.Value.Value.Expected.Value;
+            }
+            new SmsComposeTask { Body = body }.Show();
         }
     }
 }

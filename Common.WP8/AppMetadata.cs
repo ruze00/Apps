@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,36 +10,39 @@ using System.Xml;
 using Microsoft.Phone.Controls;
 using Microsoft.Phone.Shell;
 using Microsoft.Phone.Tasks;
+using Windows.ApplicationModel.Store;
 
 namespace Common.WP8
 {
     public class AppMetadata
     {
         public readonly string Name;
+        public readonly string Version;
         public readonly string Email;
         public readonly bool UsesLocation;
         public readonly string MapAuthenticationToken;
-
-        public string Version
-        {
-            get { return GetManifestAttributeValue("Version"); }
-        }
+        public readonly Func<string> GetExtraErrorReportingInfo;
 
         public Guid AppId
         {
-            get { return Guid.Parse(GetManifestAttributeValue("ProductID")); }
+            get { return CurrentApp.AppId; }
         }
 
         public bool RunningInBackground { get; private set; }
 
         public static AppMetadata Current { get; private set; }
 
-        public AppMetadata(Application application, string name, string email, bool usesLocation = false, string mapAuthenticationToken = null)
+        public AppMetadata(Application application, string name, string version, string email, bool usesLocation = false, string mapAuthenticationToken = null, Func<string> getExtraErrorReportingInfo = null)
         {
+            Resources.getResourceStreamFunc = (resourceName, assemblyName) => 
+                AppDomain.CurrentDomain.GetAssemblies().First(asm => asm.GetName().Name == assemblyName).GetManifestResourceStream(resourceName);
+
             Name = name;
+            Version = version;
             Email = email;
             UsesLocation = usesLocation;
             MapAuthenticationToken = mapAuthenticationToken;
+            GetExtraErrorReportingInfo = getExtraErrorReportingInfo;
 
             Current = this;
 
@@ -155,20 +159,6 @@ namespace Common.WP8
             if (e.NavigationMode == NavigationMode.Reset)
             {
                 resetting = true;
-            }
-        }
-
-        private static string GetManifestAttributeValue(string attributeName)
-        {
-            var xmlReaderSettings = new XmlReaderSettings
-            {
-                XmlResolver = new XmlXapResolver()
-            };
-
-            using (var xmlReader = XmlReader.Create("WMAppManifest.xml", xmlReaderSettings))
-            {
-                xmlReader.ReadToDescendant("App");
-                return xmlReader.GetAttribute(attributeName);
             }
         }
 

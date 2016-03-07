@@ -12,14 +12,47 @@ UK Trains provides real-time information for UK national rail stations (excludin
 * Map with directions to chosen station
 * Station departure and arrivals boards, including platform information
 * Show train live progress during the journey
-* Auto-refresh every 60 seconds, even under lock screen or when app is in the background
 * Show expected arrival time to discover when later trains arrive first than earlier trains
+* Send text message to let someone know about a departure
 * Allow to pin individual stations to the start screen
-* Show next departure information in live tile and lock screen (refreshed when app is running)
 * No need to manage favourite stations, recent items are remembered
-* Fast and responsive
+* Cortana integration
 
-Note that background refresh requires Location Services to be enabled
+New in 2.16:
+* Fix arrival time not working for some stations with an apostrophe in the name
+* Small UI tweaks
+
+New in 2.15:
+* Updated Penychain station code
+* Added new stations (Apperley Bridge, Bermuda Park, Cranbrook, Coventry Arena, Ebbw Vale Town, Eskbank, Galashiels, Gorebridge, Ilkeston, Kirkstall Forge, Newcourt, Newtongrange, Oxford Parkway, Shawfair, Stow, Tweedbank)
+
+New in 2.14:
+* Fix voice commands not being registered in Windows 10.
+
+New in 2.13:
+* Make it easier to go back to the list of stations when opening from a tile pinned to a specific station.
+
+New in 2.12:
+* Small bug fixes, and remove deprecated features.
+
+New in 2.11:
+* Small bug fixes
+
+New in 2.10:
+* Improved information displayed on live tiles and lock screen
+* Small bug fixes
+
+New in 2.9:
+* Small bug fixes
+
+New in 2.8:
+* Cortana integration
+
+New in 2.7:
+* Update station list with new stations
+* Added send text message option on context menu to let someone know about a departure
+* Fetch the arrival time for the first 10 departures, instead of the first 4 departures
+* Fix the display of times for circular routes that pass on the same station twice
 
 New in 2.6:
 * Small bug fixes

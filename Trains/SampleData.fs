@@ -4,7 +4,6 @@ open System
 open System.IO
 open System.Reflection
 open FSharp.Control
-open FSharp.GeoUtils
 
 type SampleData() =
     inherit Common.SampleData()
@@ -24,7 +23,7 @@ type SampleData() =
     let details = LazyAsync.fromValue [| |]
 
     let departures1 = 
-        use stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("UKDepartures.html")
+        use stream = Resources.getResourceStream "UKDepartures.html" "Trains"
         use streamReader = new StreamReader(stream)
         let html = streamReader.ReadToEnd()
         LiveDepartures.UK.getDeparturesFromHtml html None null Unchecked.defaultof<_>
@@ -84,7 +83,7 @@ type SampleData() =
             PropertyChangedEvent = Event<_,_>().Publish } ]
 
     let liveProgress1 = 
-        use stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("UKLiveProgress.html")
+        use stream = Resources.getResourceStream "UKLiveProgress.html" "Trains"
         use streamReader = new StreamReader(stream)
         let html = streamReader.ReadToEnd()
         LiveDepartures.UK.getJourneyDetailsFromHtml None (Time.Create(0)) html

@@ -5,11 +5,10 @@ open System.Collections.Generic
 open System.Net
 open System.Text
 open System.Text.RegularExpressions
-open HtmlAgilityPack.FSharp
 open FSharp.Control
-open FSharp.Net
-open FSharp.Data.Json
-open FSharp.Data.Json.Extensions
+open FSharp.Data
+open FSharp.Data.HttpRequestHeaders
+open FSharp.Data.JsonExtensions
 
 module URLs =
     let Login = "https://accounts.coursera.org/api/v1/login"
@@ -33,17 +32,17 @@ module private Implementation =
         let csrfToken = getCsrfToken()
         let cookieContainer = new CookieContainer()
         let! _ = Http.AsyncRequestString(URLs.Login,
-                                         headers = ["Origin", "https://accounts.coursera.org"
-                                                    "X-CSRFToken", csrfToken
-                                                    "Referer", "https://accounts.coursera.org/signin"], 
-                                         body = RequestBody.FormValues ["email", email
-                                                                        "password", password],
+                                         headers = [ Origin "https://accounts.coursera.org"
+                                                     "X-CSRFToken", csrfToken
+                                                     Referer "https://accounts.coursera.org/signin" ], 
+                                         body = FormValues ["email", email
+                                                            "password", password
+                                                            "webrequest", "true"],
                                          cookies = ["csrftoken", csrfToken],
                                          cookieContainer = cookieContainer)
         return cookieContainer }
 
-    let getTopicsJson email password cacheGet cacheSet =
-        let url = "https://www.coursera.org/maestro/api/topic/list_my"
+    let getJson url email password cacheGet cacheSet =
         match cacheGet url with
         | Some html -> async.Return html
         | None -> async {
@@ -51,6 +50,9 @@ module private Implementation =
             let! json = Http.AsyncRequestString(url, cookieContainer = cookieContainer) 
             cacheSet url json
             return json }
+            
+    let getTopicsJson = getJson "https://www.coursera.org/maestro/api/topic/list_my"
+    let getTopicsJson2 = getJson "https://www.coursera.org/maestro/api/topic/list2_combined"
 
     let getCrawler email password courseBaseUrl cacheGet cacheSet = 
         let cookieContainer = ref None
@@ -63,7 +65,7 @@ module private Implementation =
                     let! _ = Http.AsyncRequestString(getLoginUrl courseBaseUrl, cookieContainer = cc)
                     cookieContainer := Some cc
                 let! html = Http.AsyncRequestString(url, cookieContainer = (!cookieContainer).Value)
-                let html = cleanHtml html
+                let html = Html.clean html
                 cacheSet url html
                 return html }
 
@@ -71,10 +73,10 @@ type Crawler(email, password, cache:IDictionary<_,_>, cacheSet:Action<_,_>, crea
 
     let urlToFilename (url:string) = 
         url
-        |> remove "https://www.coursera.org/"
-        |> remove "https://class.coursera.org/"
-        |> replace "/" "_"
-        |> replace "?" "_"
+        |> String.remove "https://www.coursera.org/"
+        |> String.remove "https://class.coursera.org/"
+        |> String.replace "/" "_"
+        |> String.replace "?" "_"
 
     let cacheGet url =
         let filename = urlToFilename url 

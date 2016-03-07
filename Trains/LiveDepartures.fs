@@ -5,6 +5,7 @@ open System.ComponentModel
 open System.Globalization
 open System.Threading
 open FSharp.Control
+open FSharp.Data
 
 type DeparturesAndArrivalsTable = 
     { Station : Station
@@ -19,11 +20,11 @@ type DeparturesAndArrivalsTable =
         | Some callingAt -> sprintf "%s calling at %s" x.Station.Code callingAt.Code
     member x.HasDestinationFilter = x.CallingAt.IsSome
     member x.WithoutFilter = 
-        if not x.HasDestinationFilter then failwith "%A doesn't have a destination filter" x
+        if not x.HasDestinationFilter then failwithf "%A doesn't have a destination filter" x
         { Station = x.Station
           CallingAt = None }
     member x.Reversed =
-        if not x.HasDestinationFilter then failwith "%A can't be reversed" x
+        if not x.HasDestinationFilter then failwithf "%A can't be reversed" x
         { Station = x.CallingAt.Value
           CallingAt = Some x.Station }
 
@@ -40,6 +41,10 @@ type Departure = {
     override x.ToString() = sprintf "%A" x
     member x.PlatformIsKnown = x.Platform.IsSome
     member x.ArrivalIsKnown = x.Arrival.Value.IsSome
+    member x.IsDelayed = 
+        match x.Status with
+        | Status.Delayed _ -> true
+        | _ -> false
     member x.Expected = 
         match x.Status with
         | Status.Delayed mins -> Some (x.Due + Time.Create(mins))
@@ -94,8 +99,8 @@ and Time =
     static member TryParse(str:string) = 
         let pos = str.IndexOf ':'
         if pos >= 0 then
-            let hours = str.Substring(0, pos) |> parseInt
-            let minutes = str.Substring(pos+1) |> parseInt
+            let hours = str.Substring(0, pos) |> TextConversions.AsInteger CultureInfo.InvariantCulture
+            let minutes = str.Substring(pos+1) |> TextConversions.AsInteger CultureInfo.InvariantCulture
             match hours, minutes with
             | Some hours, Some minutes -> Some <| Time.Create(hours, minutes)
             | _ -> None
@@ -104,6 +109,15 @@ and Time =
         match Time.TryParse str with
         | Some time -> time
         | None -> raise <| ParseError(sprintf "Invalid time:\n%s" str, null)
+    member x.IsAfter(other:Time) = 
+        if x.Hours < 8 || other.Hours < 8 then
+            (x + Time.Create(8, 0)).TotalMinutes > (other + Time.Create(8, 0)).TotalMinutes
+        else
+            x.TotalMinutes > other.TotalMinutes 
+
+//Time.Create(21,05).IsAfter(Time.Create(19,45)) //true
+//Time.Create(23,45).IsAfter(Time.Create(00,05)) //false
+//Time.Create(00,05).IsAfter(Time.Create(20,45)) //true
 
 and Status =
     | OnTime
@@ -227,16 +241,25 @@ type Departure with
 
         let onJourneyElementsObtained (journeyElements:JourneyElement[]) =
       
+            let isAfterDeparture journeyElement = 
+                journeyElement.Arrives.IsNone || journeyElement.Arrives.Value.IsAfter departure.Due
+
             if journeyElements.Length <> 0 then
 
                 let index = 
                     match callingAtFilter with
-                    | Some callingAtFilter -> 
-                        match journeyElements |> Array.tryFindIndex (fun journeyElement -> journeyElement.Station = callingAtFilter) with
+                    | Some (callingAtFilter:string) -> 
+                        let callingAtFilter = callingAtFilter.Replace("'", "")
+                        match journeyElements
+                              |> Array.tryFindIndex (fun journeyElement -> 
+                                journeyElement.Station.Replace("'", "") = callingAtFilter
+                                && isAfterDeparture journeyElement) with
                         | Some index -> Some index
-                        | None -> journeyElements |> Array.tryFindIndex (fun journeyElement -> // Sometimes there's no 100% match, eg: Farringdon vs Farringdon (London)
-                                                                                               callingAtFilter.StartsWith journeyElement.Station ||
-                                                                                               journeyElement.Station.StartsWith callingAtFilter)
+                        | None -> journeyElements 
+                                  |> Array.tryFindIndex (fun journeyElement -> 
+                                    // Sometimes there's no 100% match, eg: Farringdon vs Farringdon (London)
+                                    (callingAtFilter.StartsWith(journeyElement.Station.Replace("'", "")) || journeyElement.Station.Replace("'", "").StartsWith(callingAtFilter))
+                                    && isAfterDeparture journeyElement)
                     | None -> Some <| journeyElements.Length - 1
                 
                 index |> Option.iter (postArrivalInformation journeyElements)

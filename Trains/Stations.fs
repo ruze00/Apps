@@ -1,6 +1,5 @@
 ﻿namespace Trains
 
-open System
 open System.Reflection
 open FSharp.Control
 open FSharp.Data
@@ -18,6 +17,7 @@ type Station =
     { Code : string
       Name : string
       Location : LatLong }
+    override x.ToString() = x.Name
 
 module Stations = 
 
@@ -35,15 +35,15 @@ module Stations =
                 match Country with
                 | UK ->
 
-                    //from http://www.data.gov.uk/dataset/naptan
-                    //osgb36 to latitude/longitude converted with http://gridreferencefinder.com/batchConvert/batchConvert.htm                    
+                    //from RailReferences.csv in http://www.data.gov.uk/dataset/naptan
+                    //XY location (columns 7/8) to latitude/longitude converted with http://gridreferencefinder.com/batchConvert/batchConvert.htm
 #if INTERACTIVE
                     let csvFile = new CsvProvider<"UKStations.csv", Schema="Latitude=float,Longitude=float">()
 #else
-                    use stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("UKStations.csv")
+                    use stream = Resources.getResourceStream "UKStations.csv" "Trains"
                     let csvFile = CsvProvider<"UKStations.csv", Schema="Latitude=float,Longitude=float">.Load stream
 #endif
-                    csvFile.Data
+                    csvFile.Rows
                     |> Seq.groupBy (fun station -> station.CrsCode)
                     |> Seq.map (fun (code, stations) -> 
                         let station = 
@@ -51,45 +51,31 @@ module Stations =
                             |> Seq.sortBy (fun station -> -station.RevisionNumber) 
                             |> Seq.head
                         { Code = code
-                          Name = station.StationName |> remove " Rail Station" |> remove " Railway Station"
+                          Name = station.StationName |> String.remove " Rail Station" |> String.remove " Railway Station"
                           Location = LatLong.Create station.Latitude station.Longitude })
                     |> Seq.toList
 
 
                 | Ireland ->
 
-                    //from "http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML
+                    //from http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML
 #if INTERACTIVE
                     let xml = XmlProvider<"IrelandStations.xml">.GetSample()
 #else
-                    use stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("IrelandStations.xml")
+                    use stream = Resources.getResourceStream "IrelandStations.xml" "Trains"
                     let xml = XmlProvider<"IrelandStations.xml">.Load stream
 #endif
-                    xml.GetObjStations()
+                    xml.ObjStations
                     |> Seq.distinctBy (fun station -> station.StationDesc) // there's two different Adamstown
                     |> Seq.map (fun station -> 
-                        { Code = station.StationCode
-                          Name = station.StationDesc
+                        { Code = station.StationCode.Trim()
+                          Name = station.StationDesc.Trim()
                           Location = LatLong.Create (float station.StationLatitude) (float station.StationLongitude) })
                     |> Seq.toList
 
-//#if INTERACTIVE
-//                    let csvFile = new CsvProvider<"IrelandStations.csv">()
-//#else
-//                    use stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("IrelandStations.csv")
-//                    let csvFile = CsvProvider<"IrelandStations.csv">.Load stream
-//#endif
-//                    csvFile.Data 
-//                    |> Seq.filter (fun station -> station.Code <> "")
-//                    |> Seq.map (fun station -> 
-//                        { Code = station.Code
-//                          Name = station.Name
-//                          Location = LatLong.Create station.Latitude station.Longitude })
-//                    |> Seq.toList
-
             let stationsByCode =
                 allStations 
-                |> Seq.map (fun station -> station.Code, station) 
+                |> List.map (fun station -> station.Code, station) 
                 |> dict 
 
             stationInfo := Some (allStations, stationsByCode)
@@ -99,28 +85,30 @@ module Stations =
 
     [<CompiledName("GetNearest")>]
     let getNearest currentPosition limit = 
-    
-        async {
 
-            let allStations, _ = getStationInfo()
+        let allStations, _ = getStationInfo()
 
-            let nearestStations =
-                allStations
-                |> Seq.map (fun station -> station.Location - currentPosition, station)
-                |> Seq.filter (fun (dist, _) -> dist < 9.5)
-                |> Seq.sortBy (fun (dist, station) -> dist, station.Name)
-                |> Seq.truncate limit
-                |> Seq.toArray
+        let nearestStations =
+            allStations
+            |> List.map (fun station -> station.Location - currentPosition, station)
+            |> List.filter (fun (dist, _) -> dist < 9.5)
+            |> List.sortBy (fun (dist, station) -> dist, station.Name)
+            |> Seq.truncate limit
+            |> Seq.toArray
 
-            return nearestStations
+        nearestStations
 
+    [<CompiledName("GetNearestAsync")>]
+    let getNearestAsync currentPosition limit = 
+        async { 
+            return getNearest currentPosition limit
         } |> LazyAsync.fromAsync
 
     [<CompiledName("GetAll")>]
     let getAll() =     
         let allStations, _ = getStationInfo()
         allStations
-        |> Seq.sortBy (fun station -> station.Name)
+        |> List.sortBy (fun station -> station.Name)
         |> Seq.toArray
 
     [<CompiledName("Get")>]
